@@ -19,9 +19,7 @@ std::string readConsole(const std::string& message = "Enter value: ") {
         // Если строка состоит только из пробелов, обнуляем строку
         value.clear();
     }
-
     return value;
 };
-
 
 #endif //OSI_UTIL_H
