@@ -4,7 +4,7 @@
 #include <iostream>
 #include <string>
 
-std::string readConsole(const std::string& message = "Enter value: ") {
+std::string readConsole(const std::string& message = "\nEnter value: ") {
     std::string value;
     std::cout << message;
     std::getline(std::cin, value);

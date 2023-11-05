@@ -22,7 +22,7 @@ class File {
     public: File(FileTypes _type) {
         descriptor = -1;
         type = _type;
-        path = readFilePath(_type == FileTypes::READ ? "Enter path file to be copied: " : "Enter target copying path: ");
+        path = readFilePath(_type == FileTypes::READ ? "\nEnter path file to be copied: " : "\nEnter target copying path: ");
         fstat(descriptor, &statistic);
     }
 
@@ -33,7 +33,7 @@ class File {
         if(descriptor == -1) {
             std::string message = type == FileTypes::READ ? "\nEntered incorrect read path! Try again." : "\nEntered incorrect write path! Try again.";
             std::cout << message << std::endl;
-            path = readFilePath(type == FileTypes::READ ? "Enter path file to be copied: " : "Enter target copying path: ");
+            path = readFilePath(type == FileTypes::READ ? "\nEnter path file to be copied: " : "\nEnter target copying path: ");
             openFile(flag);
         }
     }
@@ -42,7 +42,7 @@ class File {
         close(descriptor);
     }
 
-    public: std::string readFilePath(const std::string& message = "Enter file path: ") {
+    public: std::string readFilePath(const std::string& message = "\nEnter file path: ") {
         return readConsole(message);
     };
 };
