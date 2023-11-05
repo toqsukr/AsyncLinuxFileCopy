@@ -22,19 +22,21 @@ class File {
     public: File(FileTypes _type) {
         descriptor = -1;
         type = _type;
-        path = readFilePath(_type == FileTypes::READ ? "\nEnter path file to be copied: " : "\nEnter target copying path: ");
-        fstat(descriptor, &statistic);
     }
 
     public: struct stat getStatistic() {return statistic;}
 
     public: void openFile(int flag=O_RDONLY|O_NONBLOCK) {
+        path = readFilePath(type == FileTypes::READ ? "\nEnter path file to be copied: " : "\nEnter target copying path: ");
         descriptor = open(path.c_str(), flag, 0666);
         if(descriptor == -1) {
             std::string message = type == FileTypes::READ ? "\nEntered incorrect read path! Try again." : "\nEntered incorrect write path! Try again.";
             std::cout << message << std::endl;
-            path = readFilePath(type == FileTypes::READ ? "\nEnter path file to be copied: " : "\nEnter target copying path: ");
             openFile(flag);
+        }
+        else {
+            std::cout << "File opened successful!" << std::endl;
+            fstat(descriptor, &statistic);
         }
     }
 

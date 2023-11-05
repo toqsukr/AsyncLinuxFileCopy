@@ -29,10 +29,18 @@ class Copier {
     public: Copier() {
         asyncManager = new AsyncManager();
         fileManager = new FileManager();
+        fileManager->openReadFile();
+        fileManager->openWriteFile();
+        std::cout << fileManager->getReadFile()->getStatistic().st_size << std::endl;
+        fileManager->closeReadFile();
+        fileManager->closeWriteFile();
     }
 
     public: FileManager *getFileManager() {return fileManager;}
     public: AsyncManager *getAsyncManager() {return asyncManager;}
+
+    public: off_t getSizeByOperation() {return fileManager->getReadFile()->getStatistic().st_size / asyncManager->getOperationCount();}
+
 };
 
 
