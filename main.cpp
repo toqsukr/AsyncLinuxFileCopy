@@ -20,16 +20,19 @@
 #include <chrono>
 
 #include "FileManager.h"
+#include "AsyncManager.h"
 
 int main() {
-    auto *fileManager = new FileManager();
-    fileManager->openReadFile();
-    fileManager->openWriteFile();
-
-    std::cout << fileManager->getReadFile()->getStatistic().st_size << '\t' << fileManager->getWriteFile()->getStatistic().st_size << std::endl;
-
-    fileManager->closeReadFile();
-    fileManager->closeWriteFile();
+        auto *asyncManager = new AsyncManager();
+        std::cout << asyncManager->getOperationCount() << '\t' << asyncManager->getTotalSize() << std::endl;
+//    auto *fileManager = new FileManager();
+//    fileManager->openReadFile();
+//    fileManager->openWriteFile();
+//
+//    std::cout << fileManager->getReadFile()->getStatistic().st_size << '\t' << fileManager->getWriteFile()->getStatistic().st_size << std::endl;
+//
+//    fileManager->closeReadFile();
+//    fileManager->closeWriteFile();
     return 0;
 }
 

@@ -17,35 +17,41 @@ struct aio_operation {
 };
 
 class AsyncManager {
+    private: off_t blockSize = 4096;
     private: int operationCount;
-    private: int blockSize;
+    private: int blockCount;
     private: std::vector<aiocb> readList, writeList; // блоки  управления  асинхронным  вводом-выводом
     private: std::vector<std::string> bufferList;
     private: std::vector<aio_operation> operationList;
 
     public: AsyncManager() {
         setOperationCount();
-        setBlockSize();
+        setBlockCount();
         operationList.resize(2 * operationCount);
     }
 
-    public: int setOperationCount(const std::string& message = "\nEnter async operation count (1, 2, 4, 8, 12, 16): ") {
-        int value = std::stoi(readConsole(message));
+    public: int getOperationCount() {return operationCount;}
+    public: int getBlockCount() {return blockCount;}
+
+    public: int setOperationCount() {
+        int value = std::stoi(readConsole("\nEnter async operation count (1, 2, 4, 8, 12, 16): "));
         if((value != 1) && (value != 2) && (value != 4) && (value != 8) && (value != 12) && (value != 16)) {
-            setOperationCount("\nEntered incorrect operation count! Try again.");
+            std::cout << "\nEntered incorrect operation count! Try again." << std::endl;
+            setOperationCount();
         }
-        operationCount = value;
+        else    operationCount = value;
     }
 
-    public: int setBlockSize(const std::string& message = "\nEnter block size (1, 2, 4, 8, 12, 16, 32): ") {
-        int value = std::stoi(readConsole(message));
+    public: int setBlockCount() {
+        int value = std::stoi(readConsole("\nEnter block size (1, 2, 4, 8, 12, 16, 32): "));
         if((value != 1) &&(value != 2) &&(value != 4) &&(value != 8) &&(value != 12) &&(value != 16) && (value != 32)) {
-            setBlockSize("\nEntered incorrect block size! Try again.");
+            std::cout << "\nEntered incorrect block size! Try again." << std::endl;
+            setBlockCount();
         }
-        blockSize = value;
+        else    blockCount = value;
     }
 
-    public: int getTotalSize() {return operationCount * blockSize;}
+    public: int getTotalSize() {return blockSize * blockCount;}
 
 };
 
