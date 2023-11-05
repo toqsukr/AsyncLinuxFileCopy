@@ -14,22 +14,23 @@ enum class FileTypes {
 
 
 class File {
-    private: int descriptor;
+    private: int descriptor = -1;
     private: std::string path;
     private: FileTypes type;
     private: struct stat statistic {};
 
-    public: File(FileTypes _type) {
-        descriptor = -1;
+    public: explicit File(FileTypes _type) {
         type = _type;
     }
+
+    public: int getDescriptor() const {return  descriptor;}
 
     public: struct stat getStatistic() {return statistic;}
 
     public: void openFile(int flag=O_RDONLY|O_NONBLOCK) {
         path = readFilePath(type == FileTypes::READ ? "\nEnter path file to be copied: " : "\nEnter target copying path: ");
         descriptor = open(path.c_str(), flag, 0666);
-        if(descriptor == -1) {
+        if(descriptor < 0) {
             std::string message = type == FileTypes::READ ? "\nEntered incorrect read path! Try again." : "\nEntered incorrect write path! Try again.";
             std::cout << message << std::endl;
             openFile(flag);

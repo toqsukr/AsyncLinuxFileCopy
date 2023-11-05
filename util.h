@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <string>
+#include <errno.h>
 
 std::string readConsole(const std::string& message = "\nEnter value: ") {
     std::string value;
@@ -21,5 +22,10 @@ std::string readConsole(const std::string& message = "\nEnter value: ") {
     }
     return value;
 };
+
+void printLastError() {
+    const char *error_string = strerror(errno);
+    std::cerr << "Error: " << error_string << std::endl;
+}
 
 #endif //OSI_UTIL_H
