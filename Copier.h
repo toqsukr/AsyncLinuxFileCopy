@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <aio.h>
+#include <atomic>
 
 #include "FileManager.h"
 #include "AsyncManager.h"
@@ -18,6 +19,13 @@ struct aio_operation {
     ssize_t bytesDeal=0;
     struct aio_operation* nextOperation;
 };
+
+std::atomic<bool> shouldStop(false);
+
+void sigtermHandler(int signum) {
+    std::cout << "Received SIGTERM signal." << std::endl;
+    shouldStop = true;
+}
 
 class Copier {
     struct CallbackData {
@@ -35,7 +43,6 @@ class Copier {
     public: Copier() {
         asyncManager = new AsyncManager();
         fileManager = new FileManager();
-        sizeByOperation = fileManager->getReadFile()->getStatistic().st_size / asyncManager->getOperationCount();
         operationList.resize(asyncManager->getOperationCount() * 2);
     }
 
@@ -58,14 +65,14 @@ class Copier {
             readList[index/2].aio_buf = (void *)bufferList[index/2].c_str(); // .aio_buf - расположение буфера
             readList[index/2].aio_nbytes = asyncManager->getTotalSize(); // .aio_nbytes - длина передачи
             readList[index/2].aio_offset = asyncManager->getTotalSize() * (index / 2); // .aio_offset - файловое смещение
+
             CallbackData callbackData{};
             callbackData.operation = &operationList[index];
             callbackData.copier = this;
             readList[index/2].aio_sigevent.sigev_notify = SIGEV_THREAD;
-            readList[index/2].aio_sigevent.sigev_notify_function = reinterpret_cast<void (*)(union sigval)>(completionHandler);
-            readList[index/2].aio_sigevent.sigev_value.sival_ptr = &callbackData;
+            readList[index/2].aio_sigevent.sigev_value.sival_ptr = new CallbackData(callbackData);
+            readList[index/2].aio_sigevent.sigev_notify_function = completionHandler;
             readList[index/2].aio_sigevent.sigev_notify_attributes = nullptr;
-            std::cout << operationList[index].buffer << std::endl;
             if (asyncManager->getTotalSize() > fileSizeToCopy) {
                 readList[index/2].aio_nbytes = fileSizeToCopy;
             }
@@ -86,13 +93,15 @@ class Copier {
             writeList[index/2].aio_buf = (void *)bufferList[index/2].c_str(); // тот же буфер что и на чтении
             writeList[index/2].aio_nbytes = asyncManager->getTotalSize();
             writeList[index/2].aio_offset = asyncManager->getTotalSize() * (index / 2);
+
             CallbackData callbackData{};
             callbackData.operation = &operationList[index];
             callbackData.copier = this;
             writeList[index/2].aio_sigevent.sigev_notify = SIGEV_THREAD;
-            writeList[index/2].aio_sigevent.sigev_notify_function = reinterpret_cast<void (*)(union sigval)>(completionHandler);
-            writeList[index/2].aio_sigevent.sigev_value.sival_ptr = &callbackData;
+            writeList[index/2].aio_sigevent.sigev_value.sival_ptr = new CallbackData(callbackData);
+            writeList[index/2].aio_sigevent.sigev_notify_function = completionHandler;
             writeList[index/2].aio_sigevent.sigev_notify_attributes = nullptr;
+
             if (asyncManager->getTotalSize() > fileSizeToCopy) {
                 writeList[index/2].aio_nbytes = fileSizeToCopy;
             }
@@ -102,6 +111,11 @@ class Copier {
     }
 
     public: void startCopying() {
+        fileManager->openReadFile();
+        fileManager->openWriteFile();
+        fileSizeToCopy = fileManager->getReadFile()->getStatistic().st_size;
+        sizeByOperation = fileSizeToCopy / asyncManager->getOperationCount();
+        signal(SIGTERM, sigtermHandler);
         for (int i = 0; i < asyncManager->getOperationCount() * 2; i++) {
             memset(&operationList[i], 0, sizeof(aio_operation));
             // Копирует значение 0 в каждый из первых символов sizeof(aio_operation) объекта, на который указывает &aio_op_list[i].
@@ -111,15 +125,26 @@ class Copier {
             else {
                 writeAsync(i);
             }
-        operationList[i].buffer = (char *)bufferList[(i / 2)].c_str();
+            operationList[i].buffer = (char *)bufferList[(i / 2)].c_str();
         }
+        for (int i = 0; i < asyncManager->getOperationCount(); i++) {
+            if (aio_read(&readList[i]) == -1) { // aio_read - Инициирует операцию асинхронного чтения
+                printLastError();
+            }
+        }
+        while (!shouldStop) {
+            usleep(1000);
+        }
+        fileManager->closeReadFile();
+        fileManager->closeWriteFile();
     }
 
 public: static void completionHandler(sigval_t sigval) {
         auto *data = (struct CallbackData *) sigval.sival_ptr;
-        auto *operation = data->operation;
+        auto operation = data->operation;
         auto *copier = data->copier;
         auto *next = operation->nextOperation;
+        std::cout << "id: " << operation->id << std::endl;
         if (operation->writeOperation) {
             ssize_t bytesWritten = aio_return(&operation->aio);
             /*

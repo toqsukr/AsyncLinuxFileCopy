@@ -12,8 +12,8 @@ class AsyncManager {
     private: int blockCount;
 
     public: AsyncManager() {
-        setOperationCount();
         setBlockCount();
+        setOperationCount();
     }
 
     public: int getOperationCount() {return operationCount;}

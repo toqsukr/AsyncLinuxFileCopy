@@ -23,11 +23,7 @@
 
 int main() {
     auto copier = new Copier();
-    copier->getFileManager()->openReadFile();
-    copier->getFileManager()->openWriteFile();
     copier->startCopying();
-    copier->getFileManager()->closeReadFile();
-    copier->getFileManager()->closeWriteFile();
     return 0;
 }
 
