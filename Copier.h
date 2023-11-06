@@ -36,6 +36,7 @@ class Copier {
     private: AsyncManager *asyncManager;
     private: ssize_t fileSizeToCopy;
     private: off_t sizeByOperation;
+    private: int fileOffset;
     private: std::vector<aiocb> readList, writeList; // блоки  управления  асинхронным  вводом-выводом
     private: std::vector<std::string> bufferList;
     private: std::vector<aio_operation> operationList;
@@ -73,8 +74,8 @@ class Copier {
             readList[index/2].aio_sigevent.sigev_value.sival_ptr = new CallbackData(callbackData);
             readList[index/2].aio_sigevent.sigev_notify_function = completionHandler;
             readList[index/2].aio_sigevent.sigev_notify_attributes = nullptr;
-            if (asyncManager->getTotalSize() > fileSizeToCopy) {
-                readList[index/2].aio_nbytes = fileSizeToCopy;
+            if (asyncManager->getTotalSize() > fileManager->getReadFile()->getStatistic().st_size) {
+                readList[index/2].aio_nbytes = fileManager->getReadFile()->getStatistic().st_size;
             }
 
             operationList[index].aio = readList[index/2];
@@ -102,8 +103,8 @@ class Copier {
             writeList[index/2].aio_sigevent.sigev_notify_function = completionHandler;
             writeList[index/2].aio_sigevent.sigev_notify_attributes = nullptr;
 
-            if (asyncManager->getTotalSize() > fileSizeToCopy) {
-                writeList[index/2].aio_nbytes = fileSizeToCopy;
+            if (asyncManager->getTotalSize() > fileManager->getReadFile()->getStatistic().st_size) {
+                writeList[index/2].aio_nbytes = fileManager->getReadFile()->getStatistic().st_size;
             }
 
             operationList[index].aio = writeList[index/2];
@@ -132,7 +133,7 @@ class Copier {
                 printLastError();
             }
         }
-        while (!shouldStop) {
+        while (fileOffset != asyncManager->getOperationCount()) {
             usleep(1000);
         }
         fileManager->closeReadFile();
@@ -151,16 +152,18 @@ public: static void completionHandler(sigval_t sigval) {
             ssize_t - это то же самое, что size_t (тип используется для представления размера объектов в памяти), но способен представлять число -1
             aio_return() - возвращает статус асинхронной операции ввода-вывода
             */
+
             operation->bytesDeal += bytesWritten;
             copier->fileSizeToCopy -= bytesWritten;
+            std::cout << "bytes deal: " << operation->bytesDeal << "\tstop size" << copier->sizeByOperation <<  std::endl;
             if (operation->bytesDeal < copier->sizeByOperation) {
                 std::cout << operation->aio.aio_offset << std::endl;
                 operation->aio.aio_offset = operation->aio.aio_offset + copier->asyncManager->getTotalSize() * copier->asyncManager->getOperationCount();
                 // делаем смещение для данных которые записывают другие потоки
                 next->aio.aio_offset = next->aio.aio_offset + copier->asyncManager->getTotalSize() * copier->asyncManager->getOperationCount();
-                if (copier->fileSizeToCopy < copier->asyncManager->getTotalSize() + operation->aio.aio_offset) {
-                    operation->aio.aio_nbytes = copier->fileSizeToCopy - operation->aio.aio_offset;
-                    next->aio.aio_nbytes = copier->fileSizeToCopy - operation->aio.aio_offset;
+                if (copier->getFileManager()->getReadFile()->getStatistic().st_size < copier->asyncManager->getTotalSize() + operation->aio.aio_offset) {
+                    operation->aio.aio_nbytes = copier->getFileManager()->getReadFile()->getStatistic().st_size - operation->aio.aio_offset;
+                    next->aio.aio_nbytes =  copier->getFileManager()->getReadFile()->getStatistic().st_size - operation->aio.aio_offset;
                     if (aio_read(&next->aio) == -1) {
                         printLastError();
                     }
@@ -172,7 +175,7 @@ public: static void completionHandler(sigval_t sigval) {
                 }
             }
             else {
-                copier->sizeByOperation += 1;
+                copier->fileOffset += 1;
             }
         }
         else {
@@ -190,7 +193,7 @@ public: static void completionHandler(sigval_t sigval) {
                 }
             }
             else {
-                copier->sizeByOperation += 1;
+                copier->fileOffset += 1;
                 // Если смещение больше размера файла то завершаем процесс
             }
         }
