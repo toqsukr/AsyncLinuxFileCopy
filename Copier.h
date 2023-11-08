@@ -5,6 +5,7 @@
 #include <vector>
 #include <aio.h>
 #include <atomic>
+#include <chrono>
 
 #include "FileManager.h"
 #include "AsyncManager.h"
@@ -19,13 +20,6 @@ struct aio_operation {
     ssize_t bytesDeal=0;
     struct aio_operation* nextOperation;
 };
-
-std::atomic<bool> shouldStop(false);
-
-void sigtermHandler(int signum) {
-    std::cout << "Received SIGTERM signal." << std::endl;
-    shouldStop = true;
-}
 
 class Copier {
     struct CallbackData {
@@ -116,7 +110,6 @@ class Copier {
         fileManager->openWriteFile();
         fileSizeToCopy = fileManager->getReadFile()->getStatistic().st_size;
         sizeByOperation = fileSizeToCopy / asyncManager->getOperationCount();
-        signal(SIGTERM, sigtermHandler);
         for (int i = 0; i < asyncManager->getOperationCount() * 2; i++) {
             memset(&operationList[i], 0, sizeof(aio_operation));
             // Копирует значение 0 в каждый из первых символов sizeof(aio_operation) объекта, на который указывает &aio_op_list[i].
@@ -133,9 +126,13 @@ class Copier {
                 printLastError();
             }
         }
+        auto start = std::chrono::high_resolution_clock::now();
         while (fileOffset != asyncManager->getOperationCount()) {
             usleep(1000);
         }
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = end - start;
+        std::cout << "\nОперация копирования выполнилась за : " << elapsed.count() << " секунд." << std::endl;
         fileManager->closeReadFile();
         fileManager->closeWriteFile();
     }
@@ -145,7 +142,6 @@ public: static void completionHandler(sigval_t sigval) {
         auto operation = data->operation;
         auto *copier = data->copier;
         auto *next = operation->nextOperation;
-        std::cout << "id: " << operation->id << std::endl;
         if (operation->writeOperation) {
             ssize_t bytesWritten = aio_return(&operation->aio);
             /*
@@ -155,9 +151,7 @@ public: static void completionHandler(sigval_t sigval) {
 
             operation->bytesDeal += bytesWritten;
             copier->fileSizeToCopy -= bytesWritten;
-            std::cout << "bytes deal: " << operation->bytesDeal << "\tstop size" << copier->sizeByOperation <<  std::endl;
             if (operation->bytesDeal < copier->sizeByOperation) {
-                std::cout << operation->aio.aio_offset << std::endl;
                 operation->aio.aio_offset = operation->aio.aio_offset + copier->asyncManager->getTotalSize() * copier->asyncManager->getOperationCount();
                 // делаем смещение для данных которые записывают другие потоки
                 next->aio.aio_offset = next->aio.aio_offset + copier->asyncManager->getTotalSize() * copier->asyncManager->getOperationCount();
@@ -198,8 +192,6 @@ public: static void completionHandler(sigval_t sigval) {
             }
         }
     }
-
-
 };
 
 
