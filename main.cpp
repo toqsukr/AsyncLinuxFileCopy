@@ -42,9 +42,9 @@ FileManager *fileManager;                   // менеджер, предост�
 AsyncManager *asyncManager;                 // менеджер, предоставляющий интерфейс работы с асинхронными операциями
 int operationCount;                         // заданное кол-во асинхронных операций
 ssize_t fileSizeToCopy;                     // количество байт, которые осталось скопировать
-int completedOperationCount;                // количество завершенных асинхронных операций
+int completedOperationCount;                // количество завершенных асинхронных операций (условие выхода)
 std::vector<aiocb> readList, writeList;     // блоки  управления  асинхронным  вводом-выводом
-std::vector<std::string> bufferList;        // 
+std::vector<std::string> bufferList;        // список совместных буферов для пар операций чтения/записи
 std::vector<aio_operation> operationList;   // список асинхронных операций
 
 
@@ -62,16 +62,21 @@ int main() {
     asyncManager->setSizeByOperation(fileManager->getReadFile()->getStatistic().st_size / operationCount);
 
     /*
-        Инициализация асинхронных операций, добавление в соответствующие списки
+        Инициализация асинхронных операций, настройка буфера, объединение в пары, добавление в соответствующие списки
     */
 
     for (int i = 0; i < operationCount * 2; i++) {
         memset(&operationList[i], 0, sizeof(aio_operation));
-        
+
         if (i % 2 == 0)     readAsync(i);
         else    writeAsync(i);
 
-        operationList[i].buffer = (char *)bufferList[(i / 2)].c_str();  // 
+        /*
+            Настройка общего буфера данных для соседних потоков
+            Так как четные операции чтения, а нечетные - записи, то общий буфер для соседних потоков будет находится как i / 2
+        */
+
+        operationList[i].buffer = (char *)bufferList[(i / 2)].c_str();
     }
 
     /*
@@ -124,8 +129,11 @@ void completionHandler(sigval_t sigval) {
             next->aio.aio_nbytes = fileSize - operation->aio.aio_offset;
         }
 
+        /*
+            Ловим конец файла по количеству считанных байт для конкретной операции
+        */
         if (operation->bytesDeal < asyncManager->getSizeByOperation()) {
-            if (aio_read(&next->aio) == -1) printLastError();
+            if (aio_read(&next->aio) == -1) printLastError();                   // ставит запрос на асинхронное чтение в очередь
         }
         else    completedOperationCount += 1;
         
@@ -138,7 +146,7 @@ void completionHandler(sigval_t sigval) {
         }
 
         if ((operation->firstRead == 0) || (bytesToDo > 0)) {
-            if (aio_write(&next->aio) == -1) {
+            if (aio_write(&next->aio) == -1) {                                  // ставит запрос на асинхронную запись в очередь
                 printLastError();
             }
         }
@@ -156,9 +164,9 @@ void readAsync(int index) {
     operationList[index].writeOperation = 0;
     operationList[index].nextOperation = &operationList[index + 1];
 
-    bufferList.push_back(std::string());                                // string() - Создает пустую строку длиной, состоящую из нуля символов
-    bufferList[index / 2] = std::string(totalBlockSizeInBytes, ' ');    // string(block_size, ' ') - Заполняет строку block_size последовательных копий символа ' '
-    bufferList[index / 2].clear();                                      // clear() - Удаляет содержимое строки, которая становится пустой строкой (длиной 0 символов)
+    bufferList.push_back(std::string());                                        // string() - Создает пустую строку длиной, состоящую из нуля символов
+    bufferList[index / 2] = std::string(totalBlockSizeInBytes, ' ');            // string(totalBlockSizeInBytes, ' ') - Заполняет строку totalBlockSizeInBytes последовательных копий символа ' '
+    bufferList[index / 2].clear();                                              // clear() - Удаляет содержимое строки, которая становится пустой строкой (длиной 0 символов)
 
     initAsyncOperation(index, readList[index / 2]);    
 }
@@ -168,7 +176,6 @@ void writeAsync(int index) {
     memset(&writeList[index / 2], 0, sizeof(aiocb));
     writeList[index / 2].aio_fildes = fileManager->getWriteFile()->getDescriptor();
     operationList[index].writeOperation = 1;
-    operationList[index].buffer = operationList[index - 1].buffer;
 
     operationList[index].nextOperation = &operationList[index - 1];
 
@@ -182,17 +189,20 @@ void initAsyncOperation(int index, aiocb &operation) {
     ssize_t fileSize = fileManager->getReadFile()->getStatistic().st_size;
 
     operation.aio_buf = (void *)bufferList[index / 2].c_str();
-    operation.aio_nbytes = totalBlockSizeInBytes;
-    operation.aio_offset = totalBlockSizeInBytes * (index / 2);
-
-    operation.aio_sigevent.sigev_notify = SIGEV_THREAD;
-    operation.aio_sigevent.sigev_value.sival_ptr = &operationList[index];
-    operation.aio_sigevent.sigev_notify_function = completionHandler;
-    operation.aio_sigevent.sigev_notify_attributes = nullptr;
 
     if (totalBlockSizeInBytes > fileSize) {
         operation.aio_nbytes = fileSize;
+        operation.aio_offset = totalBlockSizeInBytes * (index / 2);
+    } else {
+        operation.aio_nbytes = totalBlockSizeInBytes;
+        operation.aio_offset = totalBlockSizeInBytes * (index / 2);
     }
+    
+    operation.aio_sigevent.sigev_notify = SIGEV_THREAD;                     // способ выполнения уведомления (в данном случае уведомляем процесс о завершении операции)
+    operation.aio_sigevent.sigev_value.sival_ptr = &operationList[index];
+    operation.aio_sigevent.sigev_notify_function = completionHandler;       // функция запуска потока (вызывается при уведомлении о завершении асинхронной операции)
+    operation.aio_sigevent.sigev_notify_attributes = nullptr;
+
 
     operationList[index].aio = operation;
     operationList[index].id = index;
