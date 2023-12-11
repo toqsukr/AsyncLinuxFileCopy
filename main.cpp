@@ -119,6 +119,11 @@ void completionHandler(sigval_t sigval) {
 
         operation->bytesDeal += bytesToDo;
 
+        /*
+            Смещение происходит таким образом, чтобы потоки не конфликтовали и не считывали одни и те же области файла
+            Для этого у каждой операции свое смещение, которое позволяет считывать и записывать конкретные области файла не важно в каком порядке
+        */
+
         operation->aio.aio_offset = operation->aio.aio_offset + totalBlockSizeInBytes * operationCount;
 
         // делаем смещение для данных которые записывают другие потоки
@@ -192,10 +197,10 @@ void initAsyncOperation(int index, aiocb &operation) {
 
     if (totalBlockSizeInBytes > fileSize) {
         operation.aio_nbytes = fileSize;
-        operation.aio_offset = totalBlockSizeInBytes * (index / 2);
+        operation.aio_offset = fileSize;
     } else {
         operation.aio_nbytes = totalBlockSizeInBytes;
-        operation.aio_offset = totalBlockSizeInBytes * (index / 2);
+        operation.aio_offset = totalBlockSizeInBytes * (index / 2);         // установка начального смещения для конкретной операции, чтобы исключить конфликты считывания одних и тех же данных
     }
     
     operation.aio_sigevent.sigev_notify = SIGEV_THREAD;                     // способ выполнения уведомления (в данном случае уведомляем процесс о завершении операции)
